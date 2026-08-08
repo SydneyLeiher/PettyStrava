@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Petty Strava</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+  :root{
+    --paper: #ece4d2;
+    --paper-dark: #ddd2b8;
+    --ink: #201d18;
+    --ink-soft: #55503f;
+    --stamp: #fc4c02;
+    --stamp-dark: #c93e02;
+    --folder: #ffb082;
+    --line: rgba(32,29,24,0.18);
+    --ok: #3c6e4a;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height:100%;
+  }
+
+  body{
+    background-image:
+      radial-gradient(circle at 15% 8%, rgba(0,0,0,0.03), transparent 40%),
+      radial-gradient(circle at 85% 92%, rgba(0,0,0,0.035), transparent 45%);
+    padding: 0 0 80px 0;
+  }
+
+  .container{
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 0 24px;
+  }
+
+  /* ---- header / case file tab ---- */
+  .tab-row{
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+    margin-bottom:-1px;
+    padding-left: 8px;
+  }
+  .tab{
+    background: var(--folder);
+    color: var(--ink);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.08em;
+    padding:6px 14px 5px 14px;
+    border-radius:6px 6px 0 0;
+    border:1px solid rgba(0,0,0,0.15);
+    border-bottom:none;
+    opacity:0.85;
+  }
+  .tab.active{ opacity:1; background:#ff8a4c; transform: translateY(-2px); }
+
+  header{
+    background: var(--paper-dark);
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 2px 10px 10px 10px;
+    padding: 28px 30px 24px 30px;
+    position:relative;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 6px 18px rgba(0,0,0,0.08);
+  }
+
+  .case-no{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.12em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    margin-bottom:10px;
+  }
+
+  h1{
+    font-family:'Special Elite', monospace;
+    font-size: clamp(34px, 7vw, 52px);
+    line-height:0.95;
+    margin:0 0 10px 0;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+  h1 .petty{ color: var(--stamp); }
+
+  .subhead{
+    font-size:15px;
+    color: var(--ink-soft);
+    max-width: 46ch;
+    line-height:1.5;
+    margin:0;
+  }
+
+  /* ---- upload zone ---- */
+  .dropzone{
+    margin-top: 26px;
+    border: 2px dashed var(--ink-soft);
+    border-radius: 8px;
+    padding: 34px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition: border-color .15s ease, background .15s ease;
+    background: rgba(255,255,255,0.25);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color: var(--stamp);
+    background: rgba(252,76,2,0.07);
+  }
+  .dropzone input{ display:none; }
+  .dz-icon{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 26px;
+    line-height:1;
+    margin-bottom:14px;
+    display:block;
+  }
+  .dz-text{
+    display:block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:0.06em;
+    color: var(--ink);
+    line-height:1.4;
+  }
+  .dz-sub{
+    display:block;
+    font-size:12px;
+    color: var(--ink-soft);
+    margin-top:8px;
+    line-height:1.4;
+  }
+  .file-chip{
+    display:inline-block;
+    margin-top:14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    background: var(--ink);
+    color: var(--paper);
+    padding:5px 12px;
+    border-radius:4px;
+  }
+
+  .error-box{
+    margin-top:16px;
+    border:1px solid var(--stamp);
+    background: rgba(179,56,44,0.08);
+    color: var(--stamp-dark);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    padding:12px 14px;
+    border-radius:6px;
+    display:none;
+  }
+
+  /* ---- results ---- */
+  #results{ display:none; margin-top: 34px; }
+
+  .verdict{
+    text-align:center;
+    margin-bottom: 28px;
+  }
+  .stamp-mark{
+    display:inline-block;
+    font-family:'Special Elite', monospace;
+    font-size: clamp(26px, 5.5vw, 38px);
+    color: var(--stamp);
+    border: 4px solid var(--stamp);
+    padding: 8px 22px;
+    border-radius: 6px;
+    transform: rotate(-4deg);
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    animation: stampin .35s cubic-bezier(.2,1.4,.4,1) both;
+    mix-blend-mode: multiply;
+  }
+  .stamp-mark.clean{ color: var(--ok); border-color: var(--ok); }
+  @keyframes stampin{
+    0%{ transform: scale(2.2) rotate(-4deg); opacity:0; }
+    60%{ opacity:1; }
+    100%{ transform: scale(1) rotate(-4deg); opacity:1; }
+  }
+
+  .verdict-sub{
+    margin-top: 14px;
+    font-size: 14px;
+    color: var(--ink-soft);
+    max-width: 50ch;
+    margin-left:auto;
+    margin-right:auto;
+  }
+
+  .stat-strip{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow:hidden;
+    margin-bottom: 30px;
+  }
+  .stat{
+    background: var(--paper-dark);
+    padding: 16px 12px;
+    text-align:center;
+  }
+  .stat .num{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight:600;
+  }
+  .stat .lbl{
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+
+  .section-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+    padding-bottom:8px;
+    margin: 0 0 14px 0;
+    display:flex;
+    justify-content:space-between;
+  }
+
+  .slip{
+    background: var(--paper-dark);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--stamp);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 12px;
+    animation: slidein .3s ease both;
+  }
+  .slip:nth-child(1){ animation-delay: .05s; }
+  .slip:nth-child(2){ animation-delay: .1s; }
+  .slip:nth-child(3){ animation-delay: .15s; }
+  .slip:nth-child(4){ animation-delay: .2s; }
+  .slip:nth-child(5){ animation-delay: .25s; }
+  @keyframes slidein{
+    from{ opacity:0; transform: translateX(-8px); }
+    to{ opacity:1; transform: translateX(0); }
+  }
+
+  .slip .idx{
+    font-family:'Special Elite', monospace;
+    font-size: 20px;
+    color: var(--stamp);
+    width: 34px;
+    flex-shrink:0;
+  }
+  .slip .info{ flex: 1; }
+  .slip .range{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight:600;
+  }
+  .slip .caption{
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .slip .dur{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 15px;
+    font-weight:600;
+    background: var(--stamp);
+    color: var(--paper);
+    padding: 5px 10px;
+    border-radius: 4px;
+    white-space:nowrap;
+  }
+
+  .empty-note{
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align:center;
+    padding: 10px 0 0 0;
+  }
+
+  .minor-note{
+    margin-top: 26px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    border-top: 1px dashed var(--line);
+    padding-top: 14px;
+  }
+  .minor-note b{ color: var(--ink); }
+
+  .reset-link{
+    display:block;
+    text-align:center;
+    margin-top: 30px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    text-decoration: underline;
+    cursor:pointer;
+    background:none;
+    border:none;
+    width:100%;
+  }
+  .reset-link:hover{ color: var(--stamp); }
+
+  footer{
+    text-align:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    letter-spacing:0.05em;
+    margin-top: 50px;
+    opacity:0.7;
+  }
+
+  @media (max-width:520px){
+    .stat-strip{ grid-template-columns: 1fr; }
+    .slip{ flex-wrap:wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="tab-row">
+    <div class="tab active">EXHIBIT A</div>
+    <div class="tab">GPS LOG</div>
+  </div>
+
+  <header>
+    <div class="case-no">CASE FILE // OPEN INVESTIGATION</div>
+    <h1>Petty<br><span class="petty">Strava</span></h1>
+    <p class="subhead">Upload someone's activity data. We'll find every time their watch quietly stopped — and put a timestamp on it.</p>
+
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".csv">
+      <span class="dz-icon">▤</span>
+      <span class="dz-text">DROP CSV OR CLICK TO UPLOAD</span>
+      <div class="dz-sub">time / moving / distance columns expected</div>
+      <div class="file-chip" id="fileChip" style="display:none;"></div>
+    </label>
+    <div class="error-box" id="errorBox"></div>
+  </header>
+
+  <div id="results">
+    <div class="verdict">
+      <div class="stamp-mark" id="stampMark">PAUSED</div>
+      <p class="verdict-sub" id="verdictSub"></p>
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat">
+        <div class="num" id="statElapsed">--</div>
+        <div class="lbl">Elapsed</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="statMissing">--</div>
+        <div class="lbl">Time Unaccounted</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="statCount">--</div>
+        <div class="lbl">Real Pauses</div>
+      </div>
+    </div>
+
+    <div class="section-label">
+      <span>The Receipts</span>
+      <span id="slipCount"></span>
+    </div>
+    <div id="slipList"></div>
+    <div class="empty-note" id="emptyNote" style="display:none;">Not a single dropped second. Suspiciously clean.</div>
+
+    <div class="minor-note" id="minorNote" style="display:none;"></div>
+
+    <button class="reset-link" id="resetBtn">◂ upload a different file</button>
+  </div>
+
+  <footer>PETTY STRAVA · FOR ENTERTAINMENT PURPOSES ONLY · NOT AFFILIATED WITH STRAVA</footer>
+</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileChip = document.getElementById('fileChip');
+const errorBox = document.getElementById('errorBox');
+const results = document.getElementById('results');
+
+['dragover','dragenter'].forEach(evt=>{
+  dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+});
+['dragleave','drop'].forEach(evt=>{
+  dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); });
+});
+dropzone.addEventListener('drop', e=>{
+  const f = e.dataTransfer.files[0];
+  if(f) handleFile(f);
+});
+fileInput.addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(f) handleFile(f);
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  results.style.display = 'none';
+  fileChip.style.display = 'none';
+  errorBox.style.display = 'none';
+  fileInput.value = '';
+});
+
+function showError(msg){
+  errorBox.textContent = msg;
+  errorBox.style.display = 'block';
+  results.style.display = 'none';
+}
+
+function fmtDuration(sec){
+  sec = Math.round(sec);
+  const h = Math.floor(sec/3600);
+  const m = Math.floor((sec%3600)/60);
+  const s = sec%60;
+  if(h>0) return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  return m+':'+String(s).padStart(2,'0');
+}
+
+function fmtShort(sec){
+  sec = Math.round(sec);
+  if(sec < 60) return sec+'s';
+  const m = Math.floor(sec/60);
+  const s = sec%60;
+  return s>0 ? m+'m '+s+'s' : m+'m';
+}
+
+const CAPTIONS = [
+  "Went quiet with no explanation.",
+  "Watch just... stopped caring.",
+  "A gap nobody asked about.",
+  "Silence on the record.",
+  "The clock simply gave up.",
+  "No data. No alibi.",
+  "Took an unscheduled break.",
+  "Vanished from the timeline."
+];
+
+function handleFile(file){
+  errorBox.style.display = 'none';
+  fileChip.textContent = file.name;
+  fileChip.style.display = 'inline-block';
+
+  Papa.parse(file, {
+    header: true,
+    dynamicTyping: true,
+    skipEmptyLines: true,
+    transformHeader: h => h.trim().toLowerCase(),
+    complete: function(res){
+      try{
+        processData(res.data);
+      }catch(err){
+        console.error(err);
+        showError("Couldn't parse that file. Make sure it's a Strava-style CSV with a 'time' column.");
+      }
+    },
+    error: function(){
+      showError("Couldn't read that file. Try a .csv export.");
+    }
+  });
+}
+
+function processData(rows){
+  rows = rows.filter(r => r && (r.time !== undefined && r.time !== null && r.time !== ''));
+  if(rows.length < 2){
+    showError("That file doesn't look like a Strava data export — no usable 'time' column found.");
+    return;
+  }
+
+  rows.forEach(r=>{
+    r.time = Math.round(Number(r.time));
+    if(typeof r.moving === 'string'){
+      r.moving = r.moving.trim().toLowerCase() === 'true';
+    }
+  });
+  rows.sort((a,b)=>a.time-b.time);
+
+  const startT = rows[0].time;
+  const endT = rows[rows.length-1].time;
+  const elapsed = endT - startT + 1;
+  const recordedRows = rows.length;
+  const missingSeconds = elapsed - recordedRows;
+
+  // find real gaps: places where consecutive recorded times skip
+  const realPauses = [];
+  for(let i=1; i<rows.length; i++){
+    const gap = rows[i].time - rows[i-1].time;
+    if(gap > 1){
+      realPauses.push({
+        start: rows[i-1].time,
+        end: rows[i].time,
+        duration: gap - 1
+      });
+    }
+  }
+
+  // minor moving=false blips (only if column exists)
+  const hasMoving = rows.some(r => typeof r.moving === 'boolean');
+  let minorBlips = [];
+  if(hasMoving){
+    let i = 0;
+    while(i < rows.length){
+      if(rows[i].moving === false){
+        let j = i;
+        while(j < rows.length && rows[j].moving === false) j++;
+        minorBlips.push({
+          start: rows[i].time,
+          end: rows[j-1].time,
+          duration: rows[j-1].time - rows[i].time + 1
+        });
+        i = j;
+      } else {
+        i++;
+      }
+    }
+  }
+
+  renderResults({ elapsed, missingSeconds, realPauses, minorBlips, hasMoving });
+}
+
+function renderResults(d){
+  results.style.display = 'block';
+
+  const stampMark = document.getElementById('stampMark');
+  const verdictSub = document.getElementById('verdictSub');
+  const n = d.realPauses.length;
+
+  if(n === 0){
+    stampMark.textContent = 'CLEAN';
+    stampMark.classList.add('clean');
+    verdictSub.textContent = "Every second is accounted for. No real pauses found in this file.";
+  } else {
+    stampMark.textContent = 'PAUSED';
+    stampMark.classList.remove('clean');
+    verdictSub.textContent = n === 1
+      ? "One real gap in the recording. One is all it takes."
+      : n + " real gaps in the recording. That's a pattern.";
+  }
+
+  document.getElementById('statElapsed').textContent = fmtDuration(d.elapsed);
+  document.getElementById('statMissing').textContent = fmtShort(d.missingSeconds);
+  document.getElementById('statCount').textContent = n;
+
+  document.getElementById('slipCount').textContent = n + (n===1 ? ' pause' : ' pauses');
+
+  const list = document.getElementById('slipList');
+  list.innerHTML = '';
+  const emptyNote = document.getElementById('emptyNote');
+
+  if(n === 0){
+    emptyNote.style.display = 'block';
+  } else {
+    emptyNote.style.display = 'none';
+    d.realPauses.forEach((p, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'slip';
+      const caption = CAPTIONS[idx % CAPTIONS.length];
+      div.innerHTML = `
+        <div class="idx">${String(idx+1).padStart(2,'0')}</div>
+        <div class="info">
+          <div class="range">${fmtDuration(p.start)} elapsed → resumed at ${fmtDuration(p.end)}</div>
+          <div class="caption">${caption}</div>
+        </div>
+        <div class="dur">${fmtShort(p.duration)}</div>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  const minorNote = document.getElementById('minorNote');
+  if(d.hasMoving && d.minorBlips.length > 0){
+    const totalMinor = d.minorBlips.reduce((a,b)=>a+b.duration,0);
+    minorNote.style.display = 'block';
+    minorNote.innerHTML = `Also flagged: <b>${d.minorBlips.length} brief "not moving" blip${d.minorBlips.length===1?'':'s'}</b> totaling ${fmtShort(totalMinor)} — too short to count as a real pause, but noted for the file.`;
+  } else {
+    minorNote.style.display = 'none';
+  }
+
+  results.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+</script>
+</body>
+</html>
