@@ -244,31 +244,55 @@
 
   .stat-strip{
     display:grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
     gap: 1px;
     background: var(--line);
     border: 1px solid var(--line);
     border-radius: 8px;
     overflow:hidden;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
   }
   .stat{
     background: var(--paper-dark);
-    padding: 16px 12px;
+    padding: 16px 10px;
     text-align:center;
   }
   .stat .num{
     font-family:'IBM Plex Mono', monospace;
-    font-size: 22px;
+    font-size: 20px;
     font-weight:600;
   }
   .stat .lbl{
-    font-size: 10px;
-    letter-spacing: 0.09em;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-soft);
     margin-top: 4px;
   }
+
+  .impact-card{
+    background: rgba(252,76,2,0.07);
+    border: 1px solid rgba(252,76,2,0.3);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 30px;
+    display:none;
+  }
+  .impact-card-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color: var(--stamp-dark);
+    margin-bottom: 8px;
+  }
+  .impact-card p{
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  .impact-card b{ color: var(--stamp-dark); }
 
   .section-label{
     font-family:'IBM Plex Mono', monospace;
@@ -324,6 +348,23 @@
     height: 220px;
     width:100%;
   }
+  .chart-tooltip{
+    position:absolute;
+    pointer-events:none;
+    background: var(--ink);
+    color: var(--paper);
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    white-space:nowrap;
+    transform: translate(-50%, -110%);
+    opacity: 0;
+    transition: opacity .1s ease;
+    z-index: 5;
+  }
+  .chart-tooltip.visible{ opacity: 1; }
+  .chart-tooltip b{ color: #ffb082; }
   .chart-note{
     font-size: 11.5px;
     color: var(--ink-soft);
@@ -446,7 +487,7 @@
 
   <div class="tab-row">
     <div class="tab active">EXHIBIT A</div>
-    <div class="tab">ELAPSED TIME LOG</div>
+    <div class="tab">TCX LOG</div>
   </div>
 
   <header>
@@ -470,7 +511,7 @@
       <ol>
         <li>Install the <b>Sauce for Strava</b> browser extension (Chrome/Firefox) and sign in to Strava as usual.</li>
         <li>Open the activity you want data from — yours, or anyone's public activity.</li>
-        <li>Click the <b>Analysis</b> tab in the left sidebar.</li>
+        <li>Click the <b>Analysis</b> tab in the left sidebar (added by the extension).</li>
         <li>Scroll to the <b>Data</b> section and click the <b>TCX</b> link next to "View: raw · graphs".</li>
         <li>Drop that file up above.</li>
       </ol>
@@ -496,6 +537,19 @@
         <div class="num" id="statCount">--</div>
         <div class="lbl">Real Pauses</div>
       </div>
+      <div class="stat">
+        <div class="num" id="statMovingPace">--</div>
+        <div class="lbl">Moving Pace</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="statElapsedPace">--</div>
+        <div class="lbl">Elapsed Pace</div>
+      </div>
+    </div>
+
+    <div class="impact-card" id="impactCard">
+      <div class="impact-card-title">The Damage</div>
+      <p id="impactText"></p>
     </div>
 
     <div class="chart-card" id="chartCard">
@@ -505,8 +559,9 @@
       </div>
       <div class="chart-wrap">
         <canvas id="paceChart"></canvas>
+        <div class="chart-tooltip" id="chartTooltip"></div>
       </div>
-      <div class="chart-note">Speed across the run — shaded bands mark exactly where the watch stopped.</div>
+      <div class="chart-note">Speed across the run — shaded bands mark exactly where the watch stopped. Hover a band for details.</div>
     </div>
 
     <div class="section-label">
@@ -583,6 +638,13 @@ function fmtShort(sec){
   const m = Math.floor(sec/60);
   const s = sec%60;
   return s>0 ? m+'m '+s+'s' : m+'m';
+}
+
+function fmtPace(secPerMile){
+  if(!isFinite(secPerMile) || secPerMile <= 0) return '--';
+  const m = Math.floor(secPerMile/60);
+  const s = Math.round(secPerMile%60);
+  return m+':'+String(s).padStart(2,'0')+'/mi';
 }
 
 const CAPTIONS = [
@@ -692,7 +754,19 @@ function processTCX(xmlText){
 
   const missingSeconds = realPauses.reduce((a,p) => a + p.duration, 0);
 
+  let totalMiles = null, movingPaceSec = null, elapsedPaceSec = null;
+  if(hasDistance){
+    const lastDist = points[points.length - 1].distance;
+    if(typeof lastDist === 'number' && lastDist > 0){
+      totalMiles = lastDist / MILE;
+      const movingTime = elapsed - missingSeconds;
+      movingPaceSec = movingTime / totalMiles;
+      elapsedPaceSec = elapsed / totalMiles;
+    }
+  }
+
   let chartData = null;
+  let longestSegment = null;
   if(hasDistance){
     const targetPoints = 300;
     const step = Math.max(1, Math.floor(points.length / targetPoints));
@@ -709,13 +783,34 @@ function processTCX(xmlText){
     }
     const bands = realPauses
       .filter(p => typeof p.startDist === 'number')
-      .map(p => ({ startMile: p.startDist / MILE, endMile: p.endDist / MILE }));
+      .map(p => ({ startMile: p.startDist / MILE, endMile: p.endDist / MILE, duration: p.duration }));
+
+    // segments of continuous running between stops (and before the first / after the last)
+    const validPauses = realPauses.filter(p => typeof p.startDist === 'number');
+    const segments = [];
+    let cursorTime = 0, cursorMile = 0;
+    validPauses.forEach(p => {
+      const segMile = p.startDist / MILE;
+      if(segMile > cursorMile + 0.005){
+        segments.push({ startMile: cursorMile, endMile: segMile, startTime: cursorTime, endTime: p.start });
+      }
+      cursorTime = p.end;
+      cursorMile = p.endDist / MILE;
+    });
+    if(totalMiles !== null && totalMiles > cursorMile + 0.005){
+      segments.push({ startMile: cursorMile, endMile: totalMiles, startTime: cursorTime, endTime: elapsed });
+    }
+
+    if(segments.length > 0){
+      longestSegment = segments.reduce((a,b) => (b.endTime - b.startTime) > (a.endTime - a.startTime) ? b : a);
+    }
+
     if(chartPoints.length > 2){
-      chartData = { points: chartPoints, bands };
+      chartData = { points: chartPoints, bands, segments };
     }
   }
 
-  renderResults({ elapsed, missingSeconds, realPauses, minorBlips: [], hasMoving: false, chartData });
+  renderResults({ elapsed, missingSeconds, realPauses, minorBlips: [], hasMoving: false, chartData, hasDistance, totalMiles, movingPaceSec, elapsedPaceSec, longestSegment });
 }
 
 function renderResults(d){
@@ -740,6 +835,26 @@ function renderResults(d){
   document.getElementById('statElapsed').textContent = fmtDuration(d.elapsed);
   document.getElementById('statMissing').textContent = fmtShort(d.missingSeconds);
   document.getElementById('statCount').textContent = n;
+  document.getElementById('statMovingPace').textContent = fmtPace(d.movingPaceSec);
+  document.getElementById('statElapsedPace').textContent = fmtPace(d.elapsedPaceSec);
+
+  const impactCard = document.getElementById('impactCard');
+  const impactText = document.getElementById('impactText');
+  if(n > 0 && d.hasDistance && d.movingPaceSec && d.elapsedPaceSec){
+    const deltaSec = d.elapsedPaceSec - d.movingPaceSec;
+    const stoppedPct = (d.missingSeconds / d.elapsed) * 100;
+    const pctStr = stoppedPct < 1 ? stoppedPct.toFixed(1) : Math.round(stoppedPct);
+    let longestLine = '';
+    if(d.longestSegment){
+      const segDist = d.longestSegment.endMile - d.longestSegment.startMile;
+      const segDur = d.longestSegment.endTime - d.longestSegment.startTime;
+      longestLine = ` The longest stretch without a stop was <b>${fmtDuration(segDur)}</b> covering <b>${segDist.toFixed(2)} mi</b>.`;
+    }
+    impactCard.style.display = 'block';
+    impactText.innerHTML = `<b>${fmtShort(d.missingSeconds)}</b> of stopped time pulled the overall pace from <b>${fmtPace(d.movingPaceSec)}</b> moving to <b>${fmtPace(d.elapsedPaceSec)}</b> elapsed — a <b>${fmtPace(deltaSec).replace('/mi','')}/mi</b> hit. That's <b>${pctStr}%</b> of the total elapsed time spent stopped.${longestLine}`;
+  } else {
+    impactCard.style.display = 'none';
+  }
 
   document.getElementById('slipCount').textContent = n + (n===1 ? ' pause' : ' pauses');
 
@@ -868,6 +983,65 @@ function renderChart(chartData){
       }
     }
   });
+
+  const canvas = document.getElementById('paceChart');
+  const tooltipEl = document.getElementById('chartTooltip');
+  const bands = chartData.bands || [];
+  const segments = chartData.segments || [];
+
+  canvas.onmousemove = function(e){
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const xScale = runChartInstance.scales.x;
+
+    let hitBand = null;
+    for(const b of bands){
+      const xStart = xScale.getPixelForValue(b.startMile);
+      const xEnd = Math.max(xScale.getPixelForValue(b.endMile), xStart + 3);
+      if(x >= xStart - 2 && x <= xEnd + 2){
+        hitBand = b;
+        break;
+      }
+    }
+
+    if(hitBand){
+      tooltipEl.innerHTML = `Mile <b>${hitBand.startMile.toFixed(2)}</b> — stopped <b>${fmtShort(hitBand.duration)}</b>`;
+      tooltipEl.style.left = x + 'px';
+      tooltipEl.style.top = y + 'px';
+      tooltipEl.classList.add('visible');
+      canvas.style.cursor = 'pointer';
+      return;
+    }
+
+    let hitSeg = null;
+    for(const s of segments){
+      const xStart = xScale.getPixelForValue(s.startMile);
+      const xEnd = xScale.getPixelForValue(s.endMile);
+      if(x >= xStart && x <= xEnd){
+        hitSeg = s;
+        break;
+      }
+    }
+
+    if(hitSeg){
+      const dist = hitSeg.endMile - hitSeg.startMile;
+      const dur = hitSeg.endTime - hitSeg.startTime;
+      const paceSec = dur / dist;
+      tooltipEl.innerHTML = `<b>${dist.toFixed(2)} mi</b> in <b>${fmtDuration(dur)}</b> (${fmtPace(paceSec)})`;
+      tooltipEl.style.left = x + 'px';
+      tooltipEl.style.top = y + 'px';
+      tooltipEl.classList.add('visible');
+      canvas.style.cursor = 'default';
+    } else {
+      tooltipEl.classList.remove('visible');
+      canvas.style.cursor = 'default';
+    }
+  };
+  canvas.onmouseleave = function(){
+    tooltipEl.classList.remove('visible');
+    canvas.style.cursor = 'default';
+  };
 }
 </script>
 </body>
