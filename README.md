@@ -4,7 +4,7 @@ Every runner has that one friend whose watch conveniently "glitches" right befor
 
 Upload a TCX export of a run and it digs through the raw timestamps to find every moment the watch actually stopped recording — not just slowed down, but genuinely went dark. Each pause gets called out with exactly when it happened, how long it lasted, and which mile marker it fell on.
 
-**[Try it →](#)** *(replace with your GitHub Pages URL once deployed)*
+**[Try it →](#)** *https://sydneyleiher.github.io/PettyStrava/*
 
 ## What it does
 
