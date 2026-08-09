@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Petty Strava!</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<title>Petty Strava</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
@@ -169,6 +169,42 @@
     display:none;
   }
 
+  .howto-toggle{
+    display:block;
+    width:100%;
+    text-align:center;
+    background:none;
+    border:none;
+    margin-top: 16px;
+    padding: 4px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    text-decoration: underline;
+    cursor:pointer;
+  }
+  .howto-toggle:hover{ color: var(--stamp); }
+
+  .howto-panel{
+    display:none;
+    margin-top: 14px;
+    background: rgba(255,255,255,0.35);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .howto-panel.open{ display:block; }
+  .howto-panel ol{
+    margin:0;
+    padding-left: 20px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+  .howto-panel li{ margin-bottom: 6px; }
+  .howto-panel li:last-child{ margin-bottom:0; }
+  .howto-panel b{ color: var(--stamp-dark); }
+
   /* ---- results ---- */
   #results{ display:none; margin-top: 34px; }
 
@@ -247,6 +283,53 @@
     justify-content:space-between;
   }
 
+  .chart-card{
+    background: var(--paper-dark);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px 16px 14px 16px;
+    margin-bottom: 30px;
+    display:none;
+  }
+  .chart-card-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom: 12px;
+  }
+  .chart-card-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color: var(--ink-soft);
+  }
+  .chart-card-legend{
+    font-size: 11px;
+    color: var(--ink-soft);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .chart-card-legend .swatch{
+    display:inline-block;
+    width:10px;
+    height:10px;
+    background: rgba(252,76,2,0.4);
+    border: 1px solid var(--stamp);
+    border-radius:2px;
+  }
+  .chart-wrap{
+    position:relative;
+    height: 220px;
+    width:100%;
+  }
+  .chart-note{
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin-top: 10px;
+  }
+
   .slip{
     background: var(--paper-dark);
     border: 1px solid var(--line);
@@ -287,6 +370,18 @@
     font-size: 12.5px;
     color: var(--ink-soft);
     margin-top: 2px;
+  }
+  .slip .mile-chip{
+    display:inline-block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight:600;
+    color: var(--stamp-dark);
+    background: rgba(252,76,2,0.12);
+    border: 1px solid rgba(252,76,2,0.35);
+    padding: 1px 7px;
+    border-radius: 3px;
+    margin-top: 5px;
   }
   .slip .dur{
     font-family:'IBM Plex Mono', monospace;
@@ -351,22 +446,35 @@
 
   <div class="tab-row">
     <div class="tab active">EXHIBIT A</div>
-    <div class="tab">GPS LOG</div>
+    <div class="tab">ELAPSED TIME LOG</div>
   </div>
 
   <header>
     <div class="case-no">CASE FILE // OPEN INVESTIGATION</div>
     <h1>Petty<br><span class="petty">Strava</span></h1>
-    <p class="subhead">Upload someone's activity data. We'll find every time their watch quietly stopped — and put a timestamp on it.</p>
+    <p class="subhead">Upload a TCX export of a run. We'll find every time the watch quietly stopped — and put a timestamp and mile marker on it.</p>
 
     <label class="dropzone" id="dropzone">
-      <input type="file" id="fileInput" accept=".csv">
+      <input type="file" id="fileInput" accept=".tcx">
       <span class="dz-icon">▤</span>
-      <span class="dz-text">DROP CSV OR CLICK TO UPLOAD</span>
-      <div class="dz-sub">time / moving / distance columns expected</div>
+      <span class="dz-text">DROP A .TCX — OR CLICK TO UPLOAD</span>
+      <div class="dz-sub">A TCX export of your activity</div>
       <div class="file-chip" id="fileChip" style="display:none;"></div>
     </label>
     <div class="error-box" id="errorBox"></div>
+
+    <button class="howto-toggle" id="howtoToggle" type="button">
+      <span>Don't have a TCX file? Here's how to get one ▾</span>
+    </button>
+    <div class="howto-panel" id="howtoPanel">
+      <ol>
+        <li>Install the <b>Sauce for Strava</b> browser extension (Chrome/Firefox) and sign in to Strava as usual.</li>
+        <li>Open the activity you want data from — yours, or anyone's public activity.</li>
+        <li>Click the <b>Analysis</b> tab in the left sidebar (added by the extension).</li>
+        <li>Scroll to the <b>Data</b> section and click the <b>TCX</b> link next to "View: raw · graphs".</li>
+        <li>Drop that file up above.</li>
+      </ol>
+    </div>
   </header>
 
   <div id="results">
@@ -388,6 +496,17 @@
         <div class="num" id="statCount">--</div>
         <div class="lbl">Real Pauses</div>
       </div>
+    </div>
+
+    <div class="chart-card" id="chartCard">
+      <div class="chart-card-head">
+        <span class="chart-card-title">Mile-by-Mile</span>
+        <span class="chart-card-legend"><span class="swatch"></span> stopped here</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="paceChart"></canvas>
+      </div>
+      <div class="chart-note">Speed across the run — shaded bands mark exactly where the watch stopped.</div>
     </div>
 
     <div class="section-label">
@@ -425,6 +544,15 @@ dropzone.addEventListener('drop', e=>{
 fileInput.addEventListener('change', e=>{
   const f = e.target.files[0];
   if(f) handleFile(f);
+});
+
+document.getElementById('howtoToggle').addEventListener('click', ()=>{
+  const panel = document.getElementById('howtoPanel');
+  const btn = document.getElementById('howtoToggle');
+  const isOpen = panel.classList.toggle('open');
+  btn.querySelector('span').textContent = isOpen
+    ? "Don't have a TCX file? Here's how to get one ▴"
+    : "Don't have a TCX file? Here's how to get one ▾";
 });
 
 document.getElementById('resetBtn').addEventListener('click', ()=>{
@@ -473,81 +601,121 @@ function handleFile(file){
   fileChip.textContent = file.name;
   fileChip.style.display = 'inline-block';
 
-  Papa.parse(file, {
-    header: true,
-    dynamicTyping: true,
-    skipEmptyLines: true,
-    transformHeader: h => h.trim().toLowerCase(),
-    complete: function(res){
-      try{
-        processData(res.data);
-      }catch(err){
-        console.error(err);
-        showError("Couldn't parse that file. Make sure it's a Strava-style CSV with a 'time' column.");
-      }
-    },
-    error: function(){
-      showError("Couldn't read that file. Try a .csv export.");
-    }
-  });
-}
+  const name = file.name.toLowerCase();
 
-function processData(rows){
-  rows = rows.filter(r => r && (r.time !== undefined && r.time !== null && r.time !== ''));
-  if(rows.length < 2){
-    showError("That file doesn't look like a Strava data export — no usable 'time' column found.");
+  if(!name.endsWith('.tcx')){
+    showError("That doesn't look like a .tcx file. See the instructions above for how to export one.");
     return;
   }
 
-  rows.forEach(r=>{
-    r.time = Math.round(Number(r.time));
-    if(typeof r.moving === 'string'){
-      r.moving = r.moving.trim().toLowerCase() === 'true';
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      processTCX(e.target.result);
+    }catch(err){
+      console.error(err);
+      showError("Couldn't parse that TCX file. Make sure it's a standard export with timestamped trackpoints.");
     }
-  });
-  rows.sort((a,b)=>a.time-b.time);
+  };
+  reader.onerror = function(){
+    showError("Couldn't read that file.");
+  };
+  reader.readAsText(file);
+}
 
-  const startT = rows[0].time;
-  const endT = rows[rows.length-1].time;
-  const elapsed = endT - startT + 1;
-  const recordedRows = rows.length;
-  const missingSeconds = elapsed - recordedRows;
+function median(arr){
+  const sorted = [...arr].sort((a,b)=>a-b);
+  const mid = Math.floor(sorted.length/2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+}
 
-  // find real gaps: places where consecutive recorded times skip
+function processTCX(xmlText){
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(xmlText, 'application/xml');
+
+  if(xml.querySelector('parsererror')){
+    showError("That TCX file couldn't be parsed — it may be malformed.");
+    return;
+  }
+
+  const trackpoints = Array.from(xml.getElementsByTagName('Trackpoint'));
+  if(trackpoints.length < 3){
+    showError("Couldn't find enough timestamped trackpoints in that TCX file.");
+    return;
+  }
+
+  const points = trackpoints.map(tp => {
+    const timeEl = tp.getElementsByTagName('Time')[0];
+    const distEl = tp.getElementsByTagName('DistanceMeters')[0];
+    if(!timeEl || !timeEl.textContent) return null;
+    const ms = Date.parse(timeEl.textContent.trim());
+    if(isNaN(ms)) return null;
+    const distance = distEl ? Number(distEl.textContent) : null;
+    return { ms, distance };
+  }).filter(p => p !== null).sort((a,b) => a.ms - b.ms);
+
+  if(points.length < 3){
+    showError("This TCX file doesn't have usable timestamps on its trackpoints.");
+    return;
+  }
+
+  const startMs = points[0].ms;
+  const endMs = points[points.length - 1].ms;
+  const elapsed = (endMs - startMs) / 1000;
+  const hasDistance = points.filter(p => typeof p.distance === 'number' && !isNaN(p.distance)).length > points.length * 0.9;
+  const MILE = 1609.344;
+
+  const deltas = [];
+  for(let i = 1; i < points.length; i++){
+    deltas.push((points[i].ms - points[i-1].ms) / 1000);
+  }
+  const typicalInterval = median(deltas) || 1;
+  const threshold = Math.max(typicalInterval * 4, 6);
+
   const realPauses = [];
-  for(let i=1; i<rows.length; i++){
-    const gap = rows[i].time - rows[i-1].time;
-    if(gap > 1){
-      realPauses.push({
-        start: rows[i-1].time,
-        end: rows[i].time,
-        duration: gap - 1
-      });
-    }
-  }
-
-  // minor moving=false blips (only if column exists)
-  const hasMoving = rows.some(r => typeof r.moving === 'boolean');
-  let minorBlips = [];
-  if(hasMoving){
-    let i = 0;
-    while(i < rows.length){
-      if(rows[i].moving === false){
-        let j = i;
-        while(j < rows.length && rows[j].moving === false) j++;
-        minorBlips.push({
-          start: rows[i].time,
-          end: rows[j-1].time,
-          duration: rows[j-1].time - rows[i].time + 1
-        });
-        i = j;
-      } else {
-        i++;
+  for(let i = 1; i < points.length; i++){
+    const gap = (points[i].ms - points[i-1].ms) / 1000;
+    if(gap > threshold){
+      const pause = {
+        start: (points[i-1].ms - startMs) / 1000,
+        end: (points[i].ms - startMs) / 1000,
+        duration: gap
+      };
+      if(hasDistance && typeof points[i-1].distance === 'number'){
+        pause.mile = points[i-1].distance / MILE;
+        pause.startDist = points[i-1].distance;
+        pause.endDist = (typeof points[i].distance === 'number') ? points[i].distance : points[i-1].distance;
       }
+      realPauses.push(pause);
     }
   }
 
-  renderResults({ elapsed, missingSeconds, realPauses, minorBlips, hasMoving });
+  const missingSeconds = realPauses.reduce((a,p) => a + p.duration, 0);
+
+  let chartData = null;
+  if(hasDistance){
+    const targetPoints = 300;
+    const step = Math.max(1, Math.floor(points.length / targetPoints));
+    const chartPoints = [];
+    for(let i = step; i < points.length; i += step){
+      const prev = points[i - step];
+      const curr = points[i];
+      const dt = (curr.ms - prev.ms) / 1000;
+      const dd = curr.distance - prev.distance;
+      if(dt <= 0 || dd < 1) continue;
+      const mph = (dd / MILE) / (dt / 3600);
+      if(!isFinite(mph) || mph <= 0 || mph > 25) continue;
+      chartPoints.push({ x: curr.distance / MILE, y: mph });
+    }
+    const bands = realPauses
+      .filter(p => typeof p.startDist === 'number')
+      .map(p => ({ startMile: p.startDist / MILE, endMile: p.endDist / MILE }));
+    if(chartPoints.length > 2){
+      chartData = { points: chartPoints, bands };
+    }
+  }
+
+  renderResults({ elapsed, missingSeconds, realPauses, minorBlips: [], hasMoving: false, chartData });
 }
 
 function renderResults(d){
@@ -587,11 +755,15 @@ function renderResults(d){
       const div = document.createElement('div');
       div.className = 'slip';
       const caption = CAPTIONS[idx % CAPTIONS.length];
+      const mileChip = (typeof p.mile === 'number')
+        ? `<div class="mile-chip">mi ${p.mile.toFixed(2)}</div>`
+        : '';
       div.innerHTML = `
         <div class="idx">${String(idx+1).padStart(2,'0')}</div>
         <div class="info">
           <div class="range">${fmtDuration(p.start)} elapsed → resumed at ${fmtDuration(p.end)}</div>
           <div class="caption">${caption}</div>
+          ${mileChip}
         </div>
         <div class="dur">${fmtShort(p.duration)}</div>
       `;
@@ -608,7 +780,94 @@ function renderResults(d){
     minorNote.style.display = 'none';
   }
 
+  renderChart(d.chartData);
+
   results.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+let runChartInstance = null;
+
+const pauseBandsPlugin = {
+  id: 'pauseBands',
+  beforeDatasetsDraw(chart){
+    const bands = (chart.config.options.plugins.pauseBands || {}).bands || [];
+    if(!bands.length) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    ctx.save();
+    bands.forEach(b=>{
+      const xStart = xScale.getPixelForValue(b.startMile);
+      const xEnd = Math.max(xScale.getPixelForValue(b.endMile), xStart + 3);
+      ctx.fillStyle = 'rgba(252,76,2,0.22)';
+      ctx.fillRect(xStart, chartArea.top, xEnd - xStart, chartArea.bottom - chartArea.top);
+      ctx.strokeStyle = 'rgba(252,76,2,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(xStart, chartArea.top, xEnd - xStart, chartArea.bottom - chartArea.top);
+    });
+    ctx.restore();
+  }
+};
+if(window.Chart){ Chart.register(pauseBandsPlugin); }
+
+function renderChart(chartData){
+  const card = document.getElementById('chartCard');
+  if(!chartData || !chartData.points || chartData.points.length < 2){
+    card.style.display = 'none';
+    if(runChartInstance){ runChartInstance.destroy(); runChartInstance = null; }
+    return;
+  }
+
+  card.style.display = 'block';
+  const ctx = document.getElementById('paceChart').getContext('2d');
+  if(runChartInstance){ runChartInstance.destroy(); }
+
+  const monoFont = { family: "'IBM Plex Mono', monospace", size: 10 };
+
+  runChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        data: chartData.points,
+        borderColor: '#201d18',
+        backgroundColor: 'rgba(32,29,24,0.06)',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.25,
+        fill: true,
+        spanGaps: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      parsing: false,
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Distance (mi)', font: monoFont, color: '#55503f' },
+          grid: { color: 'rgba(32,29,24,0.08)' },
+          ticks: { font: monoFont, color: '#55503f' }
+        },
+        y: {
+          title: { display: true, text: 'Speed (mph)', font: monoFont, color: '#55503f' },
+          grid: { color: 'rgba(32,29,24,0.08)' },
+          ticks: { font: monoFont, color: '#55503f' },
+          beginAtZero: true
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => 'Mile ' + items[0].parsed.x.toFixed(2),
+            label: (item) => item.parsed.y.toFixed(1) + ' mph'
+          }
+        },
+        pauseBands: { bands: chartData.bands }
+      }
+    }
+  });
 }
 </script>
 </body>
