@@ -561,7 +561,7 @@
         <canvas id="paceChart"></canvas>
         <div class="chart-tooltip" id="chartTooltip"></div>
       </div>
-      <div class="chart-note">Speed across the run — shaded bands mark exactly where the watch stopped. Hover a band for details.</div>
+      <div class="chart-note" id="chartNote">Speed across the run — shaded bands mark exactly where the watch stopped. Hover a band for details.</div>
     </div>
 
     <div class="section-label">
@@ -709,11 +709,13 @@ function processTCX(xmlText){
   const points = trackpoints.map(tp => {
     const timeEl = tp.getElementsByTagName('Time')[0];
     const distEl = tp.getElementsByTagName('DistanceMeters')[0];
+    const altEl = tp.getElementsByTagName('AltitudeMeters')[0];
     if(!timeEl || !timeEl.textContent) return null;
     const ms = Date.parse(timeEl.textContent.trim());
     if(isNaN(ms)) return null;
     const distance = distEl ? Number(distEl.textContent) : null;
-    return { ms, distance };
+    const altitude = altEl ? Number(altEl.textContent) : null;
+    return { ms, distance, altitude };
   }).filter(p => p !== null).sort((a,b) => a.ms - b.ms);
 
   if(points.length < 3){
@@ -771,19 +773,28 @@ function processTCX(xmlText){
     const targetPoints = 300;
     const step = Math.max(1, Math.floor(points.length / targetPoints));
     const chartPoints = [];
+    const elevPoints = [];
+    const METERS_TO_FEET = 3.28084;
+    const validAltCount = points.filter(p => typeof p.altitude === 'number' && !isNaN(p.altitude)).length;
+    const hasElevation = validAltCount > points.length * 0.9;
+
     for(let i = step; i < points.length; i += step){
       const prev = points[i - step];
       const curr = points[i];
       const dt = (curr.ms - prev.ms) / 1000;
       const dd = curr.distance - prev.distance;
+      const tElapsed = (curr.ms - startMs) / 1000;
+      if(hasElevation && typeof curr.altitude === 'number'){
+        elevPoints.push({ x: tElapsed, y: curr.altitude * METERS_TO_FEET });
+      }
       if(dt <= 0 || dd < 1) continue;
       const mph = (dd / MILE) / (dt / 3600);
       if(!isFinite(mph) || mph <= 0 || mph > 25) continue;
-      chartPoints.push({ x: curr.distance / MILE, y: mph });
+      chartPoints.push({ x: tElapsed, y: mph, mile: curr.distance / MILE });
     }
     const bands = realPauses
       .filter(p => typeof p.startDist === 'number')
-      .map(p => ({ startMile: p.startDist / MILE, endMile: p.endDist / MILE, duration: p.duration }));
+      .map(p => ({ startTime: p.start, endTime: p.end, mile: p.startDist / MILE, duration: p.duration }));
 
     // segments of continuous running between stops (and before the first / after the last)
     const validPauses = realPauses.filter(p => typeof p.startDist === 'number');
@@ -802,11 +813,11 @@ function processTCX(xmlText){
     }
 
     if(segments.length > 0){
-      longestSegment = segments.reduce((a,b) => (b.endTime - b.startTime) > (a.endTime - a.startTime) ? b : a);
+      longestSegment = segments.reduce((a,b) => (b.endMile - b.startMile) > (a.endMile - a.startMile) ? b : a);
     }
 
     if(chartPoints.length > 2){
-      chartData = { points: chartPoints, bands, segments };
+      chartData = { points: chartPoints, bands, segments, elapsed, elevPoints: (hasElevation && elevPoints.length > 2) ? elevPoints : null };
     }
   }
 
@@ -911,8 +922,8 @@ const pauseBandsPlugin = {
     const xScale = scales.x;
     ctx.save();
     bands.forEach(b=>{
-      const xStart = xScale.getPixelForValue(b.startMile);
-      const xEnd = Math.max(xScale.getPixelForValue(b.endMile), xStart + 3);
+      const xStart = xScale.getPixelForValue(b.startTime);
+      const xEnd = Math.max(xScale.getPixelForValue(b.endTime), xStart + 3);
       ctx.fillStyle = 'rgba(252,76,2,0.22)';
       ctx.fillRect(xStart, chartArea.top, xEnd - xStart, chartArea.bottom - chartArea.top);
       ctx.strokeStyle = 'rgba(252,76,2,0.7)';
@@ -937,48 +948,83 @@ function renderChart(chartData){
   if(runChartInstance){ runChartInstance.destroy(); }
 
   const monoFont = { family: "'IBM Plex Mono', monospace", size: 10 };
+  const hasElev = !!(chartData.elevPoints && chartData.elevPoints.length > 2);
+
+  const chartNote = document.getElementById('chartNote');
+  chartNote.textContent = hasElev
+    ? 'Speed across the run (elevation shaded behind it) — shaded orange bands mark exactly where the watch stopped. Hover for details.'
+    : 'Speed across the run — shaded bands mark exactly where the watch stopped. Hover a band for details.';
+
+  const datasets = [];
+  if(hasElev){
+    datasets.push({
+      label: 'Elevation',
+      data: chartData.elevPoints,
+      yAxisID: 'y1',
+      borderColor: 'rgba(85,80,63,0.5)',
+      backgroundColor: 'rgba(85,80,63,0.13)',
+      borderWidth: 1,
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      tension: 0.3,
+      fill: true,
+      spanGaps: true
+    });
+  }
+  datasets.push({
+    label: 'Speed',
+    data: chartData.points,
+    yAxisID: 'y',
+    borderColor: '#201d18',
+    backgroundColor: 'rgba(32,29,24,0.06)',
+    borderWidth: 1.5,
+    pointRadius: 0,
+    pointHoverRadius: 0,
+    tension: 0.25,
+    fill: true,
+    spanGaps: false
+  });
+
+  const scalesConfig = {
+    x: {
+      type: 'linear',
+      min: 0,
+      max: chartData.elapsed,
+      title: { display: true, text: 'Elapsed Time', font: monoFont, color: '#55503f' },
+      grid: { color: 'rgba(32,29,24,0.08)' },
+      ticks: { font: monoFont, color: '#55503f', callback: (v) => fmtDuration(v) }
+    },
+    y: {
+      title: { display: true, text: 'Speed (mph)', font: monoFont, color: '#55503f' },
+      grid: { color: 'rgba(32,29,24,0.08)' },
+      ticks: { font: monoFont, color: '#55503f' },
+      beginAtZero: true
+    }
+  };
+  if(hasElev){
+    scalesConfig.y1 = {
+      type: 'linear',
+      position: 'right',
+      title: { display: true, text: 'Elevation (ft)', font: monoFont, color: '#55503f' },
+      grid: { display: false },
+      ticks: { font: monoFont, color: '#55503f' }
+    };
+  }
 
   runChartInstance = new Chart(ctx, {
     type: 'line',
-    data: {
-      datasets: [{
-        data: chartData.points,
-        borderColor: '#201d18',
-        backgroundColor: 'rgba(32,29,24,0.06)',
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.25,
-        fill: true,
-        spanGaps: false
-      }]
-    },
+    data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: { duration: 400 },
       parsing: false,
-      scales: {
-        x: {
-          type: 'linear',
-          title: { display: true, text: 'Distance (mi)', font: monoFont, color: '#55503f' },
-          grid: { color: 'rgba(32,29,24,0.08)' },
-          ticks: { font: monoFont, color: '#55503f' }
-        },
-        y: {
-          title: { display: true, text: 'Speed (mph)', font: monoFont, color: '#55503f' },
-          grid: { color: 'rgba(32,29,24,0.08)' },
-          ticks: { font: monoFont, color: '#55503f' },
-          beginAtZero: true
-        }
-      },
+      interaction: { mode: 'index', intersect: false },
+      elements: { point: { radius: 0, hoverRadius: 0, hitRadius: 0 } },
+      scales: scalesConfig,
       plugins: {
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: (items) => 'Mile ' + items[0].parsed.x.toFixed(2),
-            label: (item) => item.parsed.y.toFixed(1) + ' mph'
-          }
-        },
+        tooltip: { enabled: false },
         pauseBands: { bands: chartData.bands }
       }
     }
@@ -997,8 +1043,8 @@ function renderChart(chartData){
 
     let hitBand = null;
     for(const b of bands){
-      const xStart = xScale.getPixelForValue(b.startMile);
-      const xEnd = Math.max(xScale.getPixelForValue(b.endMile), xStart + 3);
+      const xStart = xScale.getPixelForValue(b.startTime);
+      const xEnd = Math.max(xScale.getPixelForValue(b.endTime), xStart + 3);
       if(x >= xStart - 2 && x <= xEnd + 2){
         hitBand = b;
         break;
@@ -1006,7 +1052,7 @@ function renderChart(chartData){
     }
 
     if(hitBand){
-      tooltipEl.innerHTML = `Mile <b>${hitBand.startMile.toFixed(2)}</b> — stopped <b>${fmtShort(hitBand.duration)}</b>`;
+      tooltipEl.innerHTML = `Mile <b>${hitBand.mile.toFixed(2)}</b> — stopped <b>${fmtShort(hitBand.duration)}</b>`;
       tooltipEl.style.left = x + 'px';
       tooltipEl.style.top = y + 'px';
       tooltipEl.classList.add('visible');
@@ -1016,8 +1062,8 @@ function renderChart(chartData){
 
     let hitSeg = null;
     for(const s of segments){
-      const xStart = xScale.getPixelForValue(s.startMile);
-      const xEnd = xScale.getPixelForValue(s.endMile);
+      const xStart = xScale.getPixelForValue(s.startTime);
+      const xEnd = xScale.getPixelForValue(s.endTime);
       if(x >= xStart && x <= xEnd){
         hitSeg = s;
         break;
