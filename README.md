@@ -26,7 +26,3 @@ The app expects a standard TCX export with timestamped trackpoints.
 ## Privacy
 
 Everything happens in your browser. The TCX file never leaves your machine or gets uploaded anywhere.
-
-## License
-
-MIT — do whatever you want with it.
